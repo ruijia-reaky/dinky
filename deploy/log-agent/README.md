@@ -16,6 +16,14 @@
 Kubernetes 采集凭据沿用该次提交的 GatewayConfig/kubeconfig，至少需要指定命名空间的 `pods get/list` 权限。
 多个 Kubernetes 集群存在同名节点时，需为不同 Dinky 实例配置独立 Agent 映射；当前映射按节点名称配置，尚不支持同一实例中同名节点的跨集群路由。
 
+### Application Operator 的日志保留配置
+
+Operator 模式同样使用上述索引和节点 Agent。需要确认 Operator 生成的 `log4j-console.properties` 使用追加写入并保留轮转文件，参考 [Operator Helm 日志覆盖示例](operator-values.example.yaml)。Operator 1.9.0 的测试默认配置存在 `appender.rolling.append=false`：实际测试中，取消和删除资源后可能只保留约 1 KB 退出日志。仅验证下载接口返回成功不能证明完整运行正文仍保留。
+
+在 Operator Helm values 中追加 `appender.rolling.append=true` 和启动轮转策略，按原有发布流程更新并确认控制器读取到新配置，再重新提交 Application。不要把已有日志覆盖掉后再期待本功能恢复正文。其他版本先核对实际 appender 名称和日志配置，保留现有权限、网络及 webhook 设置。
+
+已验证 Operator 1.9.0 + Flink 1.18.1、单节点 ClusterIP：通过 Dinky 提交，JM/TM 建立历史索引，取消并删除 FlinkDeployment/Pod 后，运行期间保存的日志原文仍完整包含在下载结果中。NodePort 与多物理节点不在该次验收范围。
+
 ## 数据与权限
 
 - 一次执行与一个 Pod UID 对应一条索引；Pod 重建会增加记录，不覆盖旧 UID。
@@ -43,7 +51,7 @@ Kubernetes 采集凭据沿用该次提交的 GatewayConfig/kubeconfig，至少�
 5. 重启 Dinky，确认旧索引可从数据库恢复并继续下载。
 6. 停止 Agent、删除测试日志或模拟跨租户请求，确认页面状态和访问控制符合预期。
 
-已完成 Flink 1.18.1 单节点 Kubernetes Application 端到端验证：作业失败和 Pod 自动删除后下载、Dinky 重启后下载、同名应用多次执行隔离、1 JM + 2 TM，以及 UID 下划线目录回退。下载与宿主机文件做内容校验。Java 服务测试 7 项通过，Linux Agent 测试 7 项通过，前端生产构建通过。尚未验证跨物理节点调度和专门制造的空闲 TM；浏览器下载完成事件的自动化验收未通过，下载接口已独立验证。
+已完成 Flink 1.18.1 单节点 Kubernetes Application 端到端验证：作业失败和 Pod 自动删除后下载、Dinky 重启后下载、同名应用多次执行隔离、1 JM + 2 TM、真实空闲 TM，以及 UID 下划线目录回退。下载与宿主机文件做内容校验，浏览器实际保存由人工确认通过，自动化下载完成事件未捕获。Java 服务测试 7 项通过，Linux Agent 测试 7 项通过，前端生产构建通过。MySQL、PostgreSQL 16、H2 的建表及中文注释 SQL 均已执行验证；尚未验证跨物理节点调度。
 
 ## 源码入口与迁移
 

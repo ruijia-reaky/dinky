@@ -1,0 +1,10 @@
+# Merge these logging overrides into the Apache Flink Kubernetes Operator Helm values.
+# Validated with Operator 1.9.0 and Flink 1.18.1. Check appender names in other versions.
+# Keep existing networking, webhook, ServiceAccount and RBAC settings unchanged.
+defaultConfiguration:
+  append: true
+  log4j-console.properties: |+
+    # Append when a logging context is reopened; do not truncate historical output.
+    appender.rolling.append = true
+    # Preserve the previous file when a container starts using the same Pod directory.
+    appender.rolling.policies.startup.type = OnStartupTriggeringPolicy
