@@ -54,6 +54,9 @@ public class JobLogPod {
     @JsonIgnore
     private String filesJson;
 
+    /** Persisted Kubernetes lifecycle evidence; missing evidence must not imply failure. */
+    private String lifecycleJson;
+
     private LocalDateTime firstSeen;
     private LocalDateTime lastSeen;
 
@@ -68,5 +71,7 @@ public class JobLogPod {
         private String name;
         private long size;
         private long modified;
+        private String runId;
+        private Long runStarted;
     }
 }

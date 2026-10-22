@@ -2,6 +2,7 @@
 """Read-only node log service. No Kubernetes dependency, so deleted Pods remain readable."""
 from __future__ import print_function
 
+import datetime
 import errno
 import hmac
 import json
@@ -35,6 +36,22 @@ def safe_path(root, relative, is_file=False):
     if is_file and not LOG_NAME.match(parts[-1]):
         raise ValueError("Only log and stdout files may be downloaded")
     return resolved
+
+
+RUN_NAME = re.compile(r"^flink-run-(\d{8}T\d{9}Z)-([a-f0-9-]{36})-")
+
+
+def run_metadata(name):
+    match = RUN_NAME.match(name)
+    if not match:
+        return {}
+    try:
+        started = datetime.datetime.strptime(match.group(1), "%Y%m%dT%H%M%S%fZ")
+        started = started.replace(tzinfo=datetime.timezone.utc)
+    except ValueError:
+        return {}
+    return {"runId": match.group(1) + "-" + match.group(2),
+            "runStarted": int(started.timestamp() * 1000)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -81,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
             details = os.lstat(path)
             if stat.S_ISREG(details.st_mode):
                 result.append({"name": name, "size": details.st_size,
-                               "modified": int(details.st_mtime * 1000)})
+                               "modified": int(details.st_mtime * 1000), **run_metadata(name)})
             if len(result) >= 10000:
                 break
         payload = json.dumps(result).encode("utf-8")
