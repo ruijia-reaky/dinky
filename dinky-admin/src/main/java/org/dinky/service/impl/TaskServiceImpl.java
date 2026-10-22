@@ -19,8 +19,6 @@
 
 package org.dinky.service.impl;
 
-import static org.dinky.data.model.SystemConfiguration.FLINK_JOB_ARCHIVE;
-
 import org.dinky.assertion.Asserts;
 import org.dinky.assertion.DinkyAssert;
 import org.dinky.config.Dialect;
@@ -237,9 +235,9 @@ public class TaskServiceImpl extends SuperServiceImpl<TaskMapper, Task> implemen
         if (SystemConfiguration.getInstances().getUseFlinkHistoryServer().getValue()) {
             config.getConfigJson().compute("jobmanager.archive.fs.dir", (k, v) -> {
                 if (StringUtils.isNotBlank(v)) {
-                    return v + "," + FLINK_JOB_ARCHIVE;
+                    return v + "," + SystemConfiguration.getInstances().getFlinkHistoryArchiveDirectory();
                 }
-                return FLINK_JOB_ARCHIVE;
+                return SystemConfiguration.getInstances().getFlinkHistoryArchiveDirectory();
             });
         }
         if (GatewayType.get(task.getType()).isDeployCluster()) {
