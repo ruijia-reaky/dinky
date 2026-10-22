@@ -91,6 +91,8 @@ Agent 只读挂载节点 `/data/flink-logs`，以 UID/GID 65532、补充组 9999
 
 容器端口 18089 映射到每个节点的 18090。Dinky 必须能访问节点 IP 的该端口，防火墙仅允许 Dinky 来源。此方案为 HTTP 内网部署；跨不可信网络应增加 TLS 代理并配置 HTTPS。不要创建负载均衡到任意节点的普通 Service，否则会读错节点的本地日志。
 
+私有仓库部署时，修改 `image`，并在 `dinky-log-agents` 命名空间创建镜像拉取 Secret，在 Pod spec 添加 `imagePullSecrets`。每个节点需信任仓库 CA。详见 `../docker/README.history-logs.md`。验证私有仓库时可暂用 `imagePullPolicy: Always` 强制检查清单认证，生产结合不可变标签或 digest 管理。
+
 启用 `application-job-logs.example.yml` 的 `node-agent.enabled` 并设置相同 Token 后，Dinky 使用采集时保存的 Pod `hostIP:18090` 自动访问对应节点；无需逐台维护地址。原有 `agents` 显式配置优先，适用于地址映射、TLS 代理或节点 IP 变化。节点 IP 变化后，旧记录仍指向旧 IP，须提供显式映射或集中归档。
 
 DaemonSet 只管理加入该 Kubernetes 集群且满足选择器、污点和资源约束的节点；不会自动把其他物理机加入集群。控制节点常见污点已兼容，自定义污点需按实际情况补充 tolerations。日志仍保存在节点磁盘，删除 Agent Pod 不删除日志；节点丢失或磁盘清理后无法靠 DaemonSet 恢复。

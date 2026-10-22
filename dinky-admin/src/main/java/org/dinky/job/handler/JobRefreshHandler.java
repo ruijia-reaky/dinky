@@ -53,6 +53,7 @@ import org.dinky.service.HistoryService;
 import org.dinky.service.JobHistoryService;
 import org.dinky.service.JobInstanceService;
 import org.dinky.service.JobLogService;
+import org.dinky.service.KubernetesJobStatusService;
 import org.dinky.utils.JsonUtils;
 import org.dinky.utils.TimeUtil;
 
@@ -60,6 +61,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 import org.springframework.context.annotation.DependsOn;
@@ -137,8 +139,18 @@ public class JobRefreshHandler {
                 CopyOptions.create().ignoreNullValue());
 
         if (Asserts.isNull(jobDataDto.getJob()) || jobDataDto.isError()) {
+            String previousEndpoint = jobInfoDetail.getClusterInstance().getJobManagerHost();
             Optional<JobStatus> jobStatus = getJobStatus(jobInfoDetail);
-            if (jobStatus.isPresent() && JobStatus.isDone(jobStatus.get().getValue())) {
+            if (!Objects.equals(
+                    previousEndpoint, jobInfoDetail.getClusterInstance().getJobManagerHost())) {
+                ClusterInstance update = new ClusterInstance();
+                update.setId(jobInfoDetail.getClusterInstance().getId());
+                update.setJobManagerHost(jobInfoDetail.getClusterInstance().getJobManagerHost());
+                clusterInstanceService.updateById(update);
+            }
+            boolean observedActiveJob =
+                    jobStatus.isPresent() && !jobStatus.get().isDone();
+            if (jobStatus.isPresent()) {
                 jobInstance.setStatus(jobStatus.get().getValue());
             } else {
                 // If the job fails to get it, the default Finish Time is the current time
@@ -147,7 +159,11 @@ public class JobRefreshHandler {
                 jobInfoDetail.getJobDataDto().setError(true);
                 jobInfoDetail.getJobDataDto().setErrorMsg(jobDataDto.getErrorMsg());
             }
-            if (jobInstance.getFinishTime() == null || TimeUtil.localDateTimeToLong(jobInstance.getFinishTime()) < 1) {
+            if (observedActiveJob) {
+                // Operator may be replacing the REST endpoint during an HA upgrade.
+                jobInstance.setFinishTime(TimeUtil.toLocalDateTime(-1L));
+            } else if (jobInstance.getFinishTime() == null
+                    || TimeUtil.localDateTimeToLong(jobInstance.getFinishTime()) < 1) {
                 jobInstance.setFinishTime(LocalDateTime.now());
             }
         } else {
@@ -303,6 +319,12 @@ public class JobRefreshHandler {
      * @return The job status.
      */
     private static Optional<JobStatus> getJobStatus(JobInfoDetail jobInfoDetail) {
+
+        Optional<JobStatus> operatorStatus = SpringContextUtils.getBeanByClass(KubernetesJobStatusService.class)
+                .getJobStatus(jobInfoDetail);
+        if (operatorStatus.isPresent()) {
+            return operatorStatus;
+        }
 
         ClusterConfigurationDTO clusterCfg = jobInfoDetail.getClusterConfiguration();
         ClusterInstance clusterInstance = jobInfoDetail.getClusterInstance();
