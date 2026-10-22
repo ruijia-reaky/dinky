@@ -41,6 +41,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -135,6 +136,7 @@ public class JobLogService {
                             : Config.fromKubeconfig(k8s.getKubeConfig());
             config.setConnectionTimeout(properties.getConnectTimeoutMs());
             config.setRequestTimeout(properties.getReadTimeoutMs());
+            Set<String> observed = new HashSet<>();
             try (KubernetesClient client = new DefaultKubernetesClient(config)) {
                 for (Pod pod : client.pods()
                         .inNamespace(namespace)
@@ -163,7 +165,18 @@ public class JobLogService {
                                             .toInstant())) {
                         continue;
                     }
+                    observed.add(pod.getMetadata().getUid());
                     recordPod(info.getInstance(), application, namespace, pod);
+                }
+            }
+            for (JobLogPod old : mapper.selectList(new LambdaQueryWrapper<JobLogPod>()
+                    .eq(JobLogPod::getTenantId, info.getInstance().getTenantId())
+                    .eq(JobLogPod::getJobInstanceId, info.getId()))) {
+                if (!observed.contains(old.getPodUid()) && old.getLifecycleJson() != null) {
+                    com.alibaba.fastjson2.JSONObject evidence = JSON.parseObject(old.getLifecycleJson());
+                    evidence.put("present", false);
+                    old.setLifecycleJson(evidence.toJSONString());
+                    mapper.updateById(old);
                 }
             }
             list(info.getInstance().getId());
@@ -214,12 +227,55 @@ public class JobLogService {
             row.setFilesJson("[]");
             row.setFirstSeen(LocalDateTime.now());
         }
+        Map<String, Object> evidence = new HashMap<>();
+        Map<String, Object> runHistory = new HashMap<>();
+        if (row.getLifecycleJson() != null) {
+            com.alibaba.fastjson2.JSONObject previous = JSON.parseObject(row.getLifecycleJson());
+            if (previous.getJSONObject("runHistory") != null) {
+                runHistory.putAll(previous.getJSONObject("runHistory"));
+            }
+        }
+        evidence.put("runHistory", runHistory);
+        evidence.put("present", true);
+        evidence.put("deleting", pod.getMetadata().getDeletionTimestamp() != null);
+        if (pod.getStatus() != null) {
+            evidence.put("phase", pod.getStatus().getPhase());
+            evidence.put("reason", pod.getStatus().getReason());
+            evidence.put("containers", pod.getStatus().getContainerStatuses());
+            if (pod.getStatus().getContainerStatuses() != null) {
+                for (io.fabric8.kubernetes.api.model.ContainerStatus container :
+                        pod.getStatus().getContainerStatuses()) {
+                    if ("flink-main-container".equals(container.getName())) {
+                        rememberRun(runHistory, container.getLastState());
+                        rememberRun(runHistory, container.getState());
+                    }
+                }
+            }
+        }
+        row.setLifecycleJson(JSON.toJSONString(evidence));
         row.setLastSeen(LocalDateTime.now());
         if (insert) {
             mapper.insert(row); // Persist identity even if the file service is temporarily unavailable.
         } else {
             mapper.updateById(row);
         }
+    }
+
+    private static void rememberRun(Map<String, Object> history, io.fabric8.kubernetes.api.model.ContainerState state) {
+        if (state == null) return;
+        Map<String, Object> run = new HashMap<>();
+        String started;
+        if (state.getTerminated() != null) {
+            started = state.getTerminated().getStartedAt();
+            run.put("status", "TERMINATED");
+            run.put("exitCode", state.getTerminated().getExitCode());
+            run.put("reason", state.getTerminated().getReason());
+            run.put("finishedAt", state.getTerminated().getFinishedAt());
+        } else if (state.getRunning() != null) {
+            started = state.getRunning().getStartedAt();
+            run.put("status", "RUNNING");
+        } else return;
+        if (started != null) history.put(started, run);
     }
 
     private JobInstance authorizedInstance(Integer id) {

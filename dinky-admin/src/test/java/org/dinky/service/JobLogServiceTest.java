@@ -80,6 +80,78 @@ class JobLogServiceTest {
         properties.getAgents().put("worker-a", agent);
     }
 
+    @Test
+    void recordsRestartAndPreviousExitEvidenceWithoutGuessingFromFiles() throws Exception {
+        io.fabric8.kubernetes.api.model.Pod pod = new io.fabric8.kubernetes.api.model.PodBuilder()
+                .withNewMetadata()
+                .withUid("uid")
+                .withName("jm")
+                .addToLabels("component", "jobmanager")
+                .endMetadata()
+                .withNewSpec()
+                .withNodeName("worker-a")
+                .endSpec()
+                .withNewStatus()
+                .withPhase("Running")
+                .addNewContainerStatus()
+                .withName("flink-main-container")
+                .withRestartCount(1)
+                .withNewState()
+                .withNewRunning()
+                .withStartedAt("2026-10-23T00:00:00Z")
+                .endRunning()
+                .endState()
+                .withNewLastState()
+                .withNewTerminated()
+                .withExitCode(137)
+                .withStartedAt("2026-10-22T23:00:00Z")
+                .withFinishedAt("2026-10-22T23:59:00Z")
+                .withReason("OOMKilled")
+                .endTerminated()
+                .endLastState()
+                .endContainerStatus()
+                .endStatus()
+                .build();
+        java.lang.reflect.Method method = JobLogService.class.getDeclaredMethod(
+                "recordPod", JobInstance.class, String.class, String.class, io.fabric8.kubernetes.api.model.Pod.class);
+        method.setAccessible(true);
+        JobInstance instance = new JobInstance();
+        instance.setId(7);
+        instance.setTenantId(1);
+        method.invoke(service, instance, "app", "default", pod);
+        com.alibaba.fastjson2.JSONObject evidence = com.alibaba.fastjson2.JSON.parseObject(row.getLifecycleJson());
+        assertEquals(true, evidence.getBoolean("present"));
+        assertEquals(2, evidence.getJSONObject("runHistory").size());
+        io.fabric8.kubernetes.api.model.ContainerStatus container =
+                pod.getStatus().getContainerStatuses().get(0);
+        container.setLastState(new io.fabric8.kubernetes.api.model.ContainerStateBuilder()
+                .withNewTerminated()
+                .withStartedAt("2026-10-23T00:00:00Z")
+                .withFinishedAt("2026-10-23T01:00:00Z")
+                .withExitCode(143)
+                .endTerminated()
+                .build());
+        container.setState(new io.fabric8.kubernetes.api.model.ContainerStateBuilder()
+                .withNewRunning()
+                .withStartedAt("2026-10-23T01:00:01Z")
+                .endRunning()
+                .build());
+        method.invoke(service, instance, "app", "default", pod);
+        com.alibaba.fastjson2.JSONObject history =
+                com.alibaba.fastjson2.JSON.parseObject(row.getLifecycleJson()).getJSONObject("runHistory");
+        assertEquals(3, history.size());
+        assertEquals(137, history.getJSONObject("2026-10-22T23:00:00Z").getIntValue("exitCode"));
+        assertEquals(143, history.getJSONObject("2026-10-23T00:00:00Z").getIntValue("exitCode"));
+        assertEquals("Running", evidence.getString("phase"));
+        assertEquals(
+                137,
+                evidence.getJSONArray("containers")
+                        .getJSONObject(0)
+                        .getJSONObject("lastState")
+                        .getJSONObject("terminated")
+                        .getIntValue("exitCode"));
+    }
+
     @AfterEach
     void cleanup() {
         server.stop(0);

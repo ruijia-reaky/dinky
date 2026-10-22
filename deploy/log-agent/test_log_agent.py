@@ -14,6 +14,15 @@ spec.loader.exec_module(agent)
 
 
 class LogAgentTest(unittest.TestCase):
+    def test_run_identity_is_stable_across_file_rotation(self):
+        prefix = "flink-run-20261023T030405123Z-12345678-abcd-1234-abcd-123456789abc-kubernetes-application-0-pod"
+        first = agent.run_metadata(prefix + ".log")
+        self.assertEqual(first, agent.run_metadata(prefix + ".log.3"))
+        self.assertEqual("20261023T030405123Z-12345678-abcd-1234-abcd-123456789abc", first["runId"])
+        self.assertEqual(1792724645123, first["runStarted"])
+        self.assertEqual({}, agent.run_metadata("flink-old.log.2"))
+        self.assertEqual({}, agent.run_metadata(prefix.replace("20261023", "20269999") + ".log"))
+
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.root = self.directory.name

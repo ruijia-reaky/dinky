@@ -106,3 +106,20 @@ DaemonSet 只管理加入该 Kubernetes 集群且满足选择器、污点和资�
 本功能展示关联进程日志，不会将多个作业混写的日志切分成单独作业日志。
 
 当前方案部署成本较低，满足 Pod 删除后从原节点下载。生产要求包括节点/磁盘故障后也能下载时，建议节点 Agent 持续归档到现有 S3/HDFS 等集中存储，并保存归档对象键与上传状态；不要仅在作业结束时上传，也不要把日志文件放入 MySQL。
+
+## Independent JVM run batches (optional Flink image)
+
+A rollover suffix such as `.log.1` is a file-rotation counter, not a restart counter. To distinguish repeated JVM starts in the same Pod, build the optional Flink image from this directory:
+
+```sh
+docker build -f Dockerfile.flink-run-logs -t REGISTRY/flink:1.18.1-run-batches .
+docker push REGISTRY/flink:1.18.1-run-batches
+```
+
+The wrapper preserves the original Flink launcher and exports a new `FLINK_IDENT_STRING` for each invocation: UTC start time plus a random UUID. The Pod UID remains the directory identity. Flink's log and rollover files inherit this run prefix, so rotations stay within the same run and a later restart does not reuse the earlier run's file name. Keep node clocks synchronized. The included image targets Flink 1.18.1; validate the launcher path and behavior before using another base image.
+
+Update the Agent image and Dinky backend/frontend together, then use the new Flink image for new or upgraded Applications. Configure namespace-local registry pull credentials in both JM/TM Pod templates. The Agent reports `runId` and UTC `runStarted` per file. Dinky keeps observed Kubernetes container start/exit evidence across restarts in `lifecycle_json`, added by migration `V20261023.1.3.2`.
+
+The history drawer shows each run's UTC-derived local display time, immutable ID, Pod-local ordering, run state and file type. Multiple files with the same run ID belong to one JVM run. A Pod-local ordinal reflects the runs still retained in that Pod directory; deleting earlier files can change the ordinal, so use the immutable run ID for references. Replaced Pods remain separate by UID, and parallel TaskManagers are not mistaken for sequential restarts.
+
+Exit status is shown only when Kubernetes evidence was captured. Missing events remain unknown. Old filenames cannot be retrospectively assigned a restart sequence. Rollover retention still applies within each run; whole-run retention and disk-capacity policies must be configured separately. The Agent does not delete logs.

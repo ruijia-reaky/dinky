@@ -1,0 +1,8 @@
+# Build an optional Flink image with an independent prefix for each JVM start.
+ARG FLINK_IMAGE=flink:1.18.1-scala_2.12-java11
+FROM ${FLINK_IMAGE}
+USER root
+RUN mv /opt/flink/bin/flink-console.sh /opt/flink/bin/flink-console-original.sh
+COPY flink-run-logs.sh /opt/flink/bin/flink-console.sh
+RUN sed -i 's/\r$//' /opt/flink/bin/flink-console.sh && chmod 755 /opt/flink/bin/flink-console.sh
+USER flink
