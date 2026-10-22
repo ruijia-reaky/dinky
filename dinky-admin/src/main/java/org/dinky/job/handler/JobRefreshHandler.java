@@ -53,6 +53,7 @@ import org.dinky.service.ClusterInstanceService;
 import org.dinky.service.HistoryService;
 import org.dinky.service.JobHistoryService;
 import org.dinky.service.JobInstanceService;
+import org.dinky.service.JobLogService;
 import org.dinky.service.TaskService;
 import org.dinky.utils.JsonUtils;
 import org.dinky.utils.TimeUtil;
@@ -116,6 +117,7 @@ public class JobRefreshHandler {
                 jobInfoDetail.getInstance().getName());
 
         JobInstance jobInstance = jobInfoDetail.getInstance();
+        SpringContextUtils.getBeanByClass(JobLogService.class).collect(jobInfoDetail);
         JobDataDto jobDataDto = jobInfoDetail.getJobDataDto();
         String oldStatus = jobInstance.getStatus();
 

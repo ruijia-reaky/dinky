@@ -1,0 +1,51 @@
+# Use as both JM/TM Pod template, with APP_ID set to the submitted kubernetes.cluster-id.
+# This layout matches application-job-logs.example.yml and the supplied operations manual.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: flink-pod-template
+spec:
+  initContainers:
+    - name: prepare-logs
+      image: flink:1.18.1-scala_2.12-java11
+      command: [/bin/sh, -c]
+      args:
+        - 'mkdir -p "/logs/$APP_ID/${POD_UID}_${POD_NAME}" && chown 9999:9999 "/logs/$APP_ID/${POD_UID}_${POD_NAME}"'
+      securityContext:
+        runAsUser: 0
+      env:
+        - name: APP_ID
+          value: REPLACE_WITH_APPLICATION_ID
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+      volumeMounts:
+        - name: persistent-logs
+          mountPath: /logs
+  containers:
+    - name: flink-main-container
+      env:
+        - name: APP_ID
+          value: REPLACE_WITH_APPLICATION_ID
+        - name: POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+      volumeMounts:
+        - name: persistent-logs
+          mountPath: /opt/flink/log
+          subPathExpr: $(APP_ID)/$(POD_UID)_$(POD_NAME)
+  volumes:
+    - name: persistent-logs
+      hostPath:
+        path: /data/flink-logs
+        type: DirectoryOrCreate
