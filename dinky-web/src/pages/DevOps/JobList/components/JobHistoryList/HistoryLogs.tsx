@@ -20,7 +20,7 @@
 import { getData } from '@/services/api';
 import { API_CONSTANTS } from '@/services/endpoints';
 import { l } from '@/utils/intl';
-import { Alert, Button, Drawer, Space, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Space, Table, Tag, Typography } from 'antd';
 import { useEffect, useState } from 'react';
 
 type LogFile = {
@@ -115,6 +115,7 @@ const fileState = (_pod: LogPod, file?: LogFile) => {
 };
 
 const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () => void }) => {
+  const [detail, setDetail] = useState<{ pod: LogPod; file?: LogFile }>();
   const [pods, setPods] = useState<LogPod[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -165,12 +166,12 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
           dataSource={rows}
           rowKey={({ pod, file }) => `${pod.id}/${file?.name ?? ''}`}
           pagination={{ pageSize: 10 }}
-          scroll={{ x: 1500 }}
+          scroll={{ x: 1070 }}
           locale={{ emptyText: l('devops.historyLogs.empty') }}
           columns={[
             {
               title: '运行批次（Pod 内）',
-              width: 245,
+              width: 210,
               sorter: (a, b) => (a.file?.runStarted ?? 0) - (b.file?.runStarted ?? 0),
               defaultSortOrder: 'descend',
               render: (_, { pod, file }) =>
@@ -180,9 +181,6 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
                       第 {runNumber(pod, file)} 次启动 ·{' '}
                       {new Date(file.runStarted!).toLocaleString()}
                     </Typography.Text>
-                    <Typography.Text copyable type='secondary'>
-                      {file.runId}
-                    </Typography.Text>
                   </Space>
                 ) : (
                   '旧日志，批次未知'
@@ -190,7 +188,7 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
             },
             {
               title: '批次状态',
-              width: 210,
+              width: 190,
               filters: ['本次运行', '异常退出', '正常退出', '历史运行', '批次未知'].map((text) => ({
                 text,
                 value: text
@@ -199,36 +197,8 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
               render: (_, { pod, file }) => <Tag>{runState(pod, file)}</Tag>
             },
             {
-              title: 'Pod 运行状态',
-              width: 210,
-              filters: ['当前运行', '异常退出', '正常结束', '历史 Pod', '未知'].map((text) => ({
-                text,
-                value: text
-              })),
-              onFilter: (value, row) => podState(row.pod).includes(String(value)),
-              render: (_, { pod }) => {
-                const container = lifecycle(pod).containers?.find(
-                  (c) => c.name === 'flink-main-container'
-                );
-                const previous = container?.lastState?.terminated;
-                return (
-                  <Space direction='vertical'>
-                    <Tag>{podState(pod)}</Tag>
-                    <Typography.Text>重启次数：{container?.restartCount ?? '未知'}</Typography.Text>
-                    {previous && (
-                      <Typography.Text>
-                        上一轮：{previous.exitCode === 0 ? '正常退出' : '异常退出'} (
-                        {previous.exitCode} / {previous.reason}) {previous.finishedAt}
-                      </Typography.Text>
-                    )}
-                    <Typography.Text type='secondary'>采集：{pod.lastSeen ?? '-'}</Typography.Text>
-                  </Space>
-                );
-              }
-            },
-            {
               title: '日志类型',
-              width: 150,
+              width: 120,
               filters: ['主日志', '批次内轮转文件', '标准输出'].map((text) => ({
                 text,
                 value: text
@@ -238,55 +208,18 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
             },
             {
               title: '文件更新时间',
-              width: 190,
+              width: 170,
               render: (_, { file }) => (file ? new Date(file.modified).toLocaleString() : '-')
             },
-            { title: l('devops.historyLogs.role'), width: 70, render: (_, row) => row.pod.role },
-            {
-              title: l('devops.historyLogs.node'),
-              width: 160,
-              render: (_, { pod }) => (
-                <Space direction='vertical'>
-                  <Typography.Text copyable>{pod.nodeName}</Typography.Text>
-                  <Typography.Text>{pod.hostIp}</Typography.Text>
-                </Space>
-              )
-            },
-            {
-              title: 'Pod / UID',
-              width: 250,
-              render: (_, { pod }) => (
-                <Space direction='vertical'>
-                  <Typography.Text copyable>{pod.podName}</Typography.Text>
-                  <Typography.Text copyable type='secondary'>
-                    {pod.podUid}
-                  </Typography.Text>
-                </Space>
-              )
-            },
-            {
-              title: l('devops.historyLogs.directory'),
-              width: 350,
-              render: (_, { pod }) => (
-                <Typography.Paragraph copyable style={{ wordBreak: 'break-all' }}>
-                  {pod.hostLogDir}
-                </Typography.Paragraph>
-              )
-            },
-            {
-              title: l('devops.historyLogs.file'),
-              width: 300,
-              render: (_, { file }) =>
-                file ? <Typography.Text copyable>{file.name}</Typography.Text> : '-'
-            },
+            { title: l('devops.historyLogs.role'), width: 60, render: (_, row) => row.pod.role },
             {
               title: l('devops.historyLogs.size'),
-              width: 100,
+              width: 90,
               render: (_, { file }) => (file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : '-')
             },
             {
               title: l('devops.historyLogs.status'),
-              width: 130,
+              width: 110,
               render: (_, { pod }) => (
                 <Tag color={pod.accessStatus === 'AVAILABLE' ? 'green' : 'default'}>
                   {l(`devops.historyLogs.status.${pod.accessStatus}`)}
@@ -295,22 +228,117 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
             },
             {
               title: l('global.table.operate'),
-              width: 100,
+              width: 120,
               fixed: 'right',
-              render: (_, { pod, file }) =>
-                file && pod.accessStatus === 'AVAILABLE' ? (
-                  <Typography.Link
-                    href={`${API_CONSTANTS.JOB_LOG_FILES}/${pod.id}/download?fileName=${encodeURIComponent(file.name)}`}
+              render: (_, { pod, file }) => (
+                <Space>
+                  {file && pod.accessStatus === 'AVAILABLE' && (
+                    <Typography.Link
+                      href={`${API_CONSTANTS.JOB_LOG_FILES}/${pod.id}/download?fileName=${encodeURIComponent(file.name)}`}
+                    >
+                      {l('devops.historyLogs.download')}
+                    </Typography.Link>
+                  )}
+                  <Button
+                    type='link'
+                    style={{ padding: 0 }}
+                    onClick={() => setDetail({ pod, file })}
                   >
-                    {l('devops.historyLogs.download')}
-                  </Typography.Link>
-                ) : (
-                  '-'
-                )
+                    详情
+                  </Button>
+                </Space>
+              )
             }
           ]}
         />
       </Space>
+      <Drawer open={!!detail} title='日志详情' width={640} onClose={() => setDetail(undefined)}>
+        {detail &&
+          (() => {
+            const { pod, file } = detail;
+            const container = lifecycle(pod).containers?.find(
+              (c) => c.name === 'flink-main-container'
+            );
+            const previous = container?.lastState?.terminated;
+            const text = (value?: string) =>
+              value ? (
+                <Typography.Text copyable style={{ wordBreak: 'break-all' }}>
+                  {value}
+                </Typography.Text>
+              ) : (
+                '-'
+              );
+            return (
+              <Descriptions
+                bordered
+                labelStyle={{ width: 128, minWidth: 128, whiteSpace: 'nowrap' }}
+                contentStyle={{ wordBreak: 'break-all' }}
+                column={1}
+                size='small'
+                items={[
+                  { key: 'role', label: '进程类型', children: pod.role },
+                  { key: 'run', label: '运行批次 ID', children: text(file?.runId) },
+                  {
+                    key: 'start',
+                    label: '批次启动时间',
+                    children: file?.runStarted
+                      ? new Date(file.runStarted).toLocaleString()
+                      : '旧日志，批次未知'
+                  },
+                  { key: 'state', label: '批次状态', children: runState(pod, file) },
+                  {
+                    key: 'node',
+                    label: '服务器',
+                    children: (
+                      <Space direction='vertical'>
+                        {text(pod.nodeName)}
+                        {text(pod.hostIp)}
+                      </Space>
+                    )
+                  },
+                  { key: 'pod', label: 'Pod 名称', children: text(pod.podName) },
+                  { key: 'uid', label: 'Pod UID', children: text(pod.podUid) },
+                  { key: 'directory', label: '宿主机日志目录', children: text(pod.hostLogDir) },
+                  { key: 'file', label: '日志文件', children: text(file?.name) },
+                  {
+                    key: 'path',
+                    label: '完整日志路径',
+                    children: text(file ? `${pod.hostLogDir}/${file.name}` : undefined)
+                  },
+                  { key: 'podState', label: 'Pod 当前状态', children: podState(pod) },
+                  {
+                    key: 'restarts',
+                    label: '容器重启次数',
+                    children: container?.restartCount ?? '未知'
+                  },
+                  {
+                    key: 'previous',
+                    label: '最近一次退出',
+                    children: previous
+                      ? `${previous.exitCode === 0 ? '正常退出' : '异常退出'} (${previous.exitCode} / ${previous.reason ?? ''}) ${previous.finishedAt ?? ''}`
+                      : '无已采集证据'
+                  },
+                  { key: 'seen', label: '最近采集时间', children: pod.lastSeen ?? '-' },
+                  {
+                    key: 'modified',
+                    label: '文件更新时间',
+                    children: file ? new Date(file.modified).toLocaleString() : '-'
+                  },
+                  {
+                    key: 'size',
+                    label: '文件大小',
+                    children: file ? `${file.size.toLocaleString()} 字节` : '-'
+                  },
+                  {
+                    key: 'access',
+                    label: '访问状态',
+                    children: l(`devops.historyLogs.status.${pod.accessStatus}`)
+                  }
+                ]}
+              />
+            );
+          })()}
+      </Drawer>
     </Drawer>
   );
 };
