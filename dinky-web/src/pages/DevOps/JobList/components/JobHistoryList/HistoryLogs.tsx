@@ -20,8 +20,8 @@
 import { getData } from '@/services/api';
 import { API_CONSTANTS } from '@/services/endpoints';
 import { l } from '@/utils/intl';
-import { Alert, Button, Descriptions, Drawer, Space, Table, Tag, Typography } from 'antd';
-import { useEffect, useState } from 'react';
+import { Alert, Button, Checkbox, Descriptions, Drawer, Space, Table, Tag, Typography } from 'antd';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type LogFile = {
   name: string;
@@ -119,23 +119,41 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
   const [pods, setPods] = useState<LogPod[]>([]);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshedAt, setRefreshedAt] = useState<number>();
+  const inFlight = useRef(false);
 
-  const load = async () => {
-    setLoading(true);
-    setFailed(false);
-    try {
-      const response = await getData(API_CONSTANTS.JOB_LOG_FILES, { jobInstanceId: instanceId });
-      setPods(response.data ?? []);
-    } catch {
-      setFailed(true);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const load = useCallback(
+    async (silent = false) => {
+      if (inFlight.current) return;
+      inFlight.current = true;
+      if (!silent) setLoading(true);
+      setFailed(false);
+      try {
+        const response = await getData(API_CONSTANTS.JOB_LOG_FILES, { jobInstanceId: instanceId });
+        setPods(response.data ?? []);
+        setRefreshedAt(Date.now());
+      } catch {
+        setFailed(true);
+      } finally {
+        if (!silent) setLoading(false);
+        inFlight.current = false;
+      }
+    },
+    [instanceId]
+  );
 
   useEffect(() => {
     load();
-  }, [instanceId]);
+  }, [load]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => {
+      void load(true);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, load]);
 
   const rows = pods.flatMap((pod) =>
     (pod.files?.length ? pod.files : [undefined]).map((file) => ({ pod, file }))
@@ -144,13 +162,26 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
   return (
     <Drawer
       open
-      width='90%'
+      width='min(1120px, 100vw)'
       title={`${l('devops.historyLogs.title')} #${instanceId}`}
       onClose={onClose}
       extra={
-        <Button onClick={load} loading={loading}>
-          {l('devops.historyLogs.refresh')}
-        </Button>
+        <Space wrap>
+          {refreshedAt && (
+            <Typography.Text type='secondary'>
+              更新于 {new Date(refreshedAt).toLocaleTimeString()}
+            </Typography.Text>
+          )}
+          <Checkbox
+            checked={autoRefresh}
+            onChange={(event) => setAutoRefresh(event.target.checked)}
+          >
+            每 5 秒刷新
+          </Checkbox>
+          <Button onClick={() => void load()} loading={loading}>
+            {l('devops.historyLogs.refresh')}
+          </Button>
+        </Space>
       }
     >
       <Space direction='vertical' size='middle' style={{ width: '100%' }}>
@@ -252,10 +283,16 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
           ]}
         />
       </Space>
-      <Drawer open={!!detail} title='日志详情' width={640} onClose={() => setDetail(undefined)}>
+      <Drawer
+        open={!!detail}
+        title='日志详情'
+        width='min(640px, 100vw)'
+        onClose={() => setDetail(undefined)}
+      >
         {detail &&
           (() => {
-            const { pod, file } = detail;
+            const pod = pods.find((item) => item.id === detail.pod.id) ?? detail.pod;
+            const file = pod.files.find((item) => item.name === detail.file?.name) ?? detail.file;
             const container = lifecycle(pod).containers?.find(
               (c) => c.name === 'flink-main-container'
             );
