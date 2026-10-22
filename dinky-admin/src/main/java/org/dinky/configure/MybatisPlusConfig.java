@@ -71,6 +71,7 @@ public class MybatisPlusConfig {
             "dinky_history",
             "dinky_jar",
             "dinky_job_history",
+            "dinky_job_log_pod",
             "dinky_job_instance",
             "dinky_role",
             "dinky_savepoints",

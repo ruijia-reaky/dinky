@@ -18,6 +18,24 @@
  */
 
 export default {
+  'devops.historyLogs.title': '历史日志',
+  'devops.historyLogs.refresh': '刷新文件列表',
+  'devops.historyLogs.help':
+    '按本次执行的 Pod UID 定位日志，保留已替换的 Pod。下载不依赖原 Flink 页面；仅在宿主机文件仍保留且文件服务可达时可用。',
+  'devops.historyLogs.failed': '日志列表获取失败，请重试。',
+  'devops.historyLogs.empty': '尚无日志位置记录。需先启用日志采集；旧执行不会自动还原。',
+  'devops.historyLogs.role': '类型',
+  'devops.historyLogs.node': '服务器',
+  'devops.historyLogs.directory': '宿主机日志目录',
+  'devops.historyLogs.file': '日志文件',
+  'devops.historyLogs.size': '大小',
+  'devops.historyLogs.status': '访问状态',
+  'devops.historyLogs.download': '下载',
+  'devops.historyLogs.status.AVAILABLE': '可下载',
+  'devops.historyLogs.status.PATH_ONLY': '仅记录路径',
+  'devops.historyLogs.status.MISSING': '目录不存在',
+  'devops.historyLogs.status.UNAVAILABLE': '文件服务不可达',
+  'devops.historyLogs.status.EMPTY': '暂无日志文件',
   /**
    *
    * about

@@ -20,9 +20,12 @@
 package org.dinky.job.handler;
 
 import org.dinky.assertion.Asserts;
+import org.dinky.context.SpringContextUtils;
 import org.dinky.data.model.ClusterInstance;
 import org.dinky.data.model.job.History;
 import org.dinky.data.model.job.JobInstance;
+import org.dinky.data.model.job.JobLogPod;
+import org.dinky.mapper.JobLogPodMapper;
 import org.dinky.service.ClusterInstanceService;
 import org.dinky.service.HistoryService;
 import org.dinky.service.JobHistoryService;
@@ -32,6 +35,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 
 import lombok.Builder;
@@ -87,6 +91,13 @@ public class ClearJobHistoryHandler {
                 List<Integer> clusterDeleteIds =
                         deleteList.stream().map(JobInstance::getClusterId).collect(Collectors.toList());
                 if (Asserts.isNotNullCollection(deleteList)) {
+                    SpringContextUtils.getBeanByClass(JobLogPodMapper.class)
+                            .delete(new LambdaQueryWrapper<JobLogPod>()
+                                    .in(
+                                            JobLogPod::getJobInstanceId,
+                                            deleteList.stream()
+                                                    .map(JobInstance::getId)
+                                                    .collect(Collectors.toList())));
                     jobInstanceService.remove(deleteWrapper);
                 }
                 if (Asserts.isNotNullCollection(historyDeleteIds)) {

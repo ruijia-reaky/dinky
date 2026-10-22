@@ -26,7 +26,8 @@ import { l } from '@/utils/intl';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { ProTable } from '@ant-design/pro-components';
 import { Typography } from 'antd';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import HistoryLogs from './HistoryLogs';
 
 const { Link } = Typography;
 
@@ -38,6 +39,7 @@ const JobHistoryList = (props: HistoryProps) => {
   const { taskId } = props;
 
   const actionRef = useRef<ActionType>();
+  const [logInstanceId, setLogInstanceId] = useState<number>();
 
   const jobListColumns: ProColumns<Jobs.JobInstance>[] = [
     {
@@ -77,6 +79,9 @@ const JobHistoryList = (props: HistoryProps) => {
       render: (text: any, record: Jobs.JobInstance) => [
         <Link href={`#/devops/job-detail?id=${record.id}`} key={'history-detail'}>
           {l('devops.joblist.detail')}
+        </Link>,
+        <Link onClick={() => setLogInstanceId(record.id)} key='history-logs'>
+          {l('devops.historyLogs.title')}
         </Link>
       ]
     }
@@ -84,6 +89,9 @@ const JobHistoryList = (props: HistoryProps) => {
 
   return (
     <>
+      {logInstanceId !== undefined && (
+        <HistoryLogs instanceId={logInstanceId} onClose={() => setLogInstanceId(undefined)} />
+      )}
       <ProTable<Jobs.JobInstance>
         search={false}
         params={{ isHistory: true }}

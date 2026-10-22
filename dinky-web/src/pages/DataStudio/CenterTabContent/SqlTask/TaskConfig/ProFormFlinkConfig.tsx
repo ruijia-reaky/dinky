@@ -57,7 +57,7 @@ export const ProFormFlinkConfig = (props: {
                 showSearch
                 placeholder={l('pages.datastudio.label.jobConfig.addConfig.params')}
                 options={removeDuplicates(
-                  flinkConfigOptions.flatMap((x) => x.children!!),
+                  (flinkConfigOptions ?? []).flatMap((x) => x.children ?? []),
                   'value'
                 )}
               />

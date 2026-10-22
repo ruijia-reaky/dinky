@@ -18,6 +18,25 @@
  */
 
 export default {
+  'devops.historyLogs.title': 'Historical logs',
+  'devops.historyLogs.refresh': 'Refresh files',
+  'devops.historyLogs.help':
+    'Locate logs by the Pod UID for this execution, including replaced Pods. Downloads work independently of Flink while the node files are retained and the log service is reachable.',
+  'devops.historyLogs.failed': 'Failed to load log files. Please retry.',
+  'devops.historyLogs.empty':
+    'No recorded log locations. Enable collection first; older executions cannot be reconstructed automatically.',
+  'devops.historyLogs.role': 'Role',
+  'devops.historyLogs.node': 'Server',
+  'devops.historyLogs.directory': 'Host log directory',
+  'devops.historyLogs.file': 'Log file',
+  'devops.historyLogs.size': 'Size',
+  'devops.historyLogs.status': 'Access status',
+  'devops.historyLogs.download': 'Download',
+  'devops.historyLogs.status.AVAILABLE': 'Available',
+  'devops.historyLogs.status.PATH_ONLY': 'Path only',
+  'devops.historyLogs.status.MISSING': 'Directory missing',
+  'devops.historyLogs.status.UNAVAILABLE': 'Service unavailable',
+  'devops.historyLogs.status.EMPTY': 'No log files yet',
   /**
    *
    * about

@@ -356,7 +356,7 @@ const StudioModel: StudioModelType = {
         type: 'saveTempData',
         payload: {
           ...tempData,
-          flinkConfigOptions: data
+          flinkConfigOptions: data ?? []
         }
       });
     },

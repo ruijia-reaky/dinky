@@ -1,0 +1,16 @@
+# Merge into the Dinky application configuration; secrets must come from the environment.
+dinky:
+  job-logs:
+    enabled: true
+    root-path: /data/flink-logs
+    directory-template: '{app}/{uid}_{pod}'
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+    agents:
+      '[worker-01]':
+        url: http://192.0.2.10:18089
+        token: ${LOG_AGENT_TOKEN}
+      # Add one entry per Kubernetes node using the exact spec.nodeName.
+      # '[worker-02]':
+      #   url: http://worker-02:18089
+      #   token: ${WORKER_02_LOG_AGENT_TOKEN}

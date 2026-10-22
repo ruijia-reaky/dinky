@@ -1,0 +1,21 @@
+[Unit]
+Description=Dinky read-only historical log agent
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/dinky-log-agent.env
+ExecStart=/usr/bin/python3 /opt/dinky-log-agent/log_agent.py
+Restart=on-failure
+User=nobody
+Group=nogroup
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/data/flink-logs
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
