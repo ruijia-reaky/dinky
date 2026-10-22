@@ -1,0 +1,15 @@
+# Context: a complete customized distribution in release/, without credentials.
+FROM flink:1.18.1-scala_2.12-java11
+USER root
+ENV DINKY_HOME=/opt/dinky TZ=Asia/Shanghai
+WORKDIR /opt/dinky
+COPY release/ /opt/dinky/
+COPY start-history-logs.sh /usr/local/bin/start-dinky
+RUN mkdir -p config/static customJar logs extends/flink1.18/flink \
+    && cp -a /opt/flink/lib/. extends/flink1.18/flink/ \
+    && if [ -d html ]; then cp -a html/. config/static/; fi \
+    && sed -i 's/\r$//' /usr/local/bin/start-dinky \
+    && chmod 755 /usr/local/bin/start-dinky
+EXPOSE 8888
+ENTRYPOINT ["/usr/local/bin/start-dinky"]
+CMD ["--server.port=8888", "--server.address=0.0.0.0", "--spring.config.additional-location=file:/run/dinky/application-job-logs.yml"]

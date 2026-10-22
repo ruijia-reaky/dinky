@@ -127,14 +127,7 @@ public class K8sClientHelper {
         List<HasMetadata> resources = getSqlFileDecorate().buildResources();
         // set owner reference
         if (SystemConfiguration.getInstances().isOwnerReference()) {
-            OwnerReference deploymentOwnerReference = new OwnerReferenceBuilder()
-                    .withName(deployment.getMetadata().getName())
-                    .withApiVersion(deployment.getApiVersion())
-                    .withUid(deployment.getMetadata().getUid())
-                    .withKind(deployment.getKind())
-                    .withController(true)
-                    .withBlockOwnerDeletion(true)
-                    .build();
+            OwnerReference deploymentOwnerReference = resourceOwner(deployment);
 
             resources.forEach(resource ->
                     resource.getMetadata().setOwnerReferences(Collections.singletonList(deploymentOwnerReference)));
@@ -144,6 +137,29 @@ public class K8sClientHelper {
         deploymentRollableScalableResource.watch(deploymentStatusWatch);
         kubernetesClient.resourceList(resources).createOrReplace();
         return deployment;
+    }
+
+    /** Operator replaces its Deployment during upgrades; the SQL must survive that replacement. */
+    static OwnerReference resourceOwner(Deployment deployment) {
+        if (deployment.getMetadata().getOwnerReferences() != null) {
+            for (OwnerReference owner : deployment.getMetadata().getOwnerReferences()) {
+                if ("FlinkDeployment".equals(owner.getKind())
+                        && owner.getApiVersion() != null
+                        && owner.getApiVersion().startsWith("flink.apache.org/")
+                        && deployment.getMetadata().getName().equals(owner.getName())
+                        && owner.getUid() != null) {
+                    return new OwnerReferenceBuilder(owner).build();
+                }
+            }
+        }
+        return new OwnerReferenceBuilder()
+                .withName(deployment.getMetadata().getName())
+                .withApiVersion(deployment.getApiVersion())
+                .withUid(deployment.getMetadata().getUid())
+                .withKind(deployment.getKind())
+                .withController(true)
+                .withBlockOwnerDeletion(true)
+                .build();
     }
 
     /**
