@@ -28,3 +28,11 @@ Matching Operator RUNNING/recovery states also keep the execution under monitori
 Cross-node checkpoint recovery requires shared checkpoint and HA storage, stable operator IDs and compatible application dependencies. With Kubernetes HA, Operator `last-state` upgrades can restore from a checkpoint on a different node. Check REST recovery metadata, including `is_savepoint=false`, actual Pod node assignments, subsequent checkpoints and new source records reaching the sink. This does not prove abrupt node failure recovery or shared-storage durability. An NFS server on one node remains a single point of failure.
 
 Oracle JDBC must be available to the Flink runtime classloader (for example, in the Application image's `/opt/flink/lib/`), including when the Source enumerator is recreated. A driver available only to a temporary submission classloader may fail after HA recovery.
+
+## Native Application terminal archive
+
+For clusters whose Flink runtime cannot load Dinky's default `rs:` filesystem, optionally set the Dinky JVM property `-Ddinky.flink.history.archive-directory=file:///opt/flink/checkpoints/archive`. The default remains unchanged when the property is absent. This value is used for both submitted jobs' archive directory and the embedded Flink HistoryServer's archive scan directory. Enable the Flink HistoryServer in Dinky's system configuration.
+
+Mount the same persistent shared directory at that absolute path in Dinky and all relevant Flink JobManagers. The Flink runtime must be able to write it and Dinky must be able to read it; validate permissions with the actual container user. A local path mounted from different node-local disks is not shared storage. The archive must survive Application Pod deletion and Dinky container recreation.
+
+This archive stores Flink job metadata for terminal-state evidence; historical JM/TM text logs continue to use the node Agent. Verify a running test job fails, the archive file is written, all its Pods disappear, and Dinky still displays FAILED after restart while historical log downloads remain available. A crash before Flink writes the terminal archive can still leave no conclusive terminal evidence. Apply the setting before submission; it cannot recover missing archives from old executions.

@@ -437,6 +437,12 @@ public class SystemConfiguration {
 
     public static final String FLINK_JOB_ARCHIVE = "rs:/tmp/flink-job-archive";
 
+    /** Shared storage can provide terminal evidence after an Application cluster exits. */
+    public String getFlinkHistoryArchiveDirectory() {
+        String configured = System.getProperty("dinky.flink.history.archive-directory");
+        return configured == null || configured.trim().isEmpty() ? FLINK_JOB_ARCHIVE : configured.trim();
+    }
+
     public Map<String, String> getFlinkHistoryServerConfiguration() {
         Map<String, String> config = new HashMap<>();
         if (useFlinkHistoryServer.getValue()) {
@@ -449,7 +455,7 @@ public class SystemConfiguration {
                     "historyserver.web.tmpdir",
                     FileUtil.file(DirConstant.getTempRootDir(), "flink-job-archive")
                             .getAbsolutePath());
-            config.put("historyserver.archive.fs.dir", FLINK_JOB_ARCHIVE);
+            config.put("historyserver.archive.fs.dir", getFlinkHistoryArchiveDirectory());
             config.put("historyserver.archive.clean-expired-jobs", "true");
         }
         return config;
