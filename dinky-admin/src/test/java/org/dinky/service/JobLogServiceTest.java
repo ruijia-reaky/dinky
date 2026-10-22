@@ -125,6 +125,10 @@ class JobLogServiceTest {
 
     @Test
     void downloadsOldFileWithoutLiveFlinkOrKubernetes() throws Exception {
+        // Explicit node configuration must win over the DaemonSet fallback.
+        properties.getNodeAgent().setEnabled(true);
+        properties.getNodeAgent().setPort(1);
+        properties.getNodeAgent().setToken("different-token");
         server.createContext("/download", exchange -> {
             assertEquals("Bearer test-token", exchange.getRequestHeaders().getFirst("Authorization"));
             byte[] data = "old".getBytes(StandardCharsets.UTF_8);
@@ -158,6 +162,40 @@ class JobLogServiceTest {
     void allowsPathOnlyConfiguration() {
         properties.getAgents().clear();
         assertEquals("PATH_ONLY", service.list(7).get(0).getAccessStatus());
+    }
+
+    @Test
+    void daemonSetRoutingUsesCapturedNodeIpAndAuthenticatesDownload() throws Exception {
+        properties.getAgents().clear();
+        row.setHostIp("127.0.0.1");
+        properties.getNodeAgent().setEnabled(true);
+        properties.getNodeAgent().setPort(server.getAddress().getPort());
+        properties.getNodeAgent().setToken("daemonset-token");
+        server.createContext("/download", exchange -> {
+            assertEquals("Bearer daemonset-token", exchange.getRequestHeaders().getFirst("Authorization"));
+            exchange.sendResponseHeaders(200, 3);
+            exchange.getResponseBody().write("old".getBytes(StandardCharsets.UTF_8));
+            exchange.close();
+        });
+        server.start();
+        HttpURLConnection connection = service.download(11, "old.log");
+        try {
+            assertEquals('o', connection.getInputStream().read());
+        } finally {
+            connection.disconnect();
+        }
+    }
+
+    @Test
+    void daemonSetRoutingRequiresOptInAndNumericNodeAddress() {
+        properties.getAgents().clear();
+        row.setHostIp("127.0.0.1");
+        assertEquals("PATH_ONLY", service.list(7).get(0).getAccessStatus());
+        properties.getNodeAgent().setEnabled(true);
+        for (String ip : new String[] {null, "", "node.example.org", "127.0.0.1/other", "127.0.0.1:18090"}) {
+            row.setHostIp(ip);
+            assertEquals("PATH_ONLY", service.list(7).get(0).getAccessStatus());
+        }
     }
 
     @Test

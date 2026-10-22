@@ -61,6 +61,11 @@ class LogAgentTest(unittest.TestCase):
     def test_authentication_required(self):
         self.assert_status(401, "/logs", directory=self.relative, token="incorrect")
 
+    def test_health_probe_does_not_require_or_expose_credentials(self):
+        with urlopen("http://127.0.0.1:%s/healthz" % self.server.server_port, timeout=5) as response:
+            self.assertEqual(200, response.status)
+            self.assertEqual(b"", response.read())
+
     def test_traversal_and_non_log_files_rejected(self):
         for directory in ("../", "/etc", "cdc/../other", "cdc\\other"):
             self.assert_status(400, "/logs", directory=directory)
