@@ -73,6 +73,28 @@ Operator 模式同样使用上述索引和节点 Agent。需要确认 Operator �
 
 沿用项目现有 Flyway 配置进行增量升级，不要手工写入迁移历史或删除历史校验记录。MySQL/PostgreSQL 的 `R20261022.1.3.0__job_log_pod.sql` 是项目既有命名约定下的人工回退参考，会删除本功能索引；正常升级不要执行。原始宿主机日志不受回退 SQL 影响。
 
+## DaemonSet 自动部署
+
+`Dockerfile` 将 Python 3 和 Agent 一起打包，节点无需安装 Python。`daemonset.yaml` 在每个符合条件的 Linux 节点启动一个 Agent；新增节点也由 Kubernetes 自动调度。镜像需发布到节点可访问的私有仓库，或预先导入所有节点（包括后续新增节点）。
+
+```sh
+docker build -t dinky-log-agent:1.3.0 .
+kubectl create namespace dinky-log-agents
+# token 文件应包含至少 32 个随机字符；不要将文件提交到版本库。
+kubectl -n dinky-log-agents create secret generic dinky-log-agent-token --from-file=token=./token
+kubectl apply -f daemonset.yaml
+kubectl -n dinky-log-agents rollout status daemonset/dinky-log-agent
+kubectl -n dinky-log-agents get pods -o wide
+```
+
+Agent 只读挂载节点 `/data/flink-logs`，以 UID/GID 65532、补充组 9999 运行。目录须可遍历、日志须可读；可通过日志目录的专用组及 setgid/默认 ACL 配置权限，不要为了读取日志改为特权容器。`/healthz` 无需认证且不返回文件信息，其余接口仍需 Bearer Token。无需 Kubernetes API 权限。
+
+容器端口 18089 映射到每个节点的 18090。Dinky 必须能访问节点 IP 的该端口，防火墙仅允许 Dinky 来源。此方案为 HTTP 内网部署；跨不可信网络应增加 TLS 代理并配置 HTTPS。不要创建负载均衡到任意节点的普通 Service，否则会读错节点的本地日志。
+
+启用 `application-job-logs.example.yml` 的 `node-agent.enabled` 并设置相同 Token 后，Dinky 使用采集时保存的 Pod `hostIP:18090` 自动访问对应节点；无需逐台维护地址。原有 `agents` 显式配置优先，适用于地址映射、TLS 代理或节点 IP 变化。节点 IP 变化后，旧记录仍指向旧 IP，须提供显式映射或集中归档。
+
+DaemonSet 只管理加入该 Kubernetes 集群且满足选择器、污点和资源约束的节点；不会自动把其他物理机加入集群。控制节点常见污点已兼容，自定义污点需按实际情况补充 tolerations。日志仍保存在节点磁盘，删除 Agent Pod 不删除日志；节点丢失或磁盘清理后无法靠 DaemonSet 恢复。
+
 ## 范围与后续
 
 当前采集接入已有作业刷新任务，使用独立、有界线程池。Pod 若在两个采集周期之间创建并销毁，可能漏掉。

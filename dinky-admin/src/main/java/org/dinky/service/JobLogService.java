@@ -57,6 +57,7 @@ import org.springframework.web.server.ResponseStatusException;
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.google.common.net.InetAddresses;
 
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.client.Config;
@@ -245,7 +246,7 @@ public class JobLogService {
                     row.getFilesJson() == null
                             ? Collections.emptyList()
                             : JSON.parseArray(row.getFilesJson(), JobLogPod.LogFile.class));
-            if (!properties.getAgents().containsKey(row.getNodeName())) {
+            if (resolveAgent(row) == null) {
                 row.setAccessStatus("PATH_ONLY");
                 continue;
             }
@@ -330,8 +331,30 @@ public class JobLogService {
         return connection;
     }
 
+    private JobLogProperties.Agent resolveAgent(JobLogPod row) {
+        JobLogProperties.Agent explicit = properties.getAgents().get(row.getNodeName());
+        if (explicit != null) {
+            return explicit;
+        }
+        JobLogProperties.NodeAgent config = properties.getNodeAgent();
+        String ip = row.getHostIp();
+        if (config == null
+                || !config.isEnabled()
+                || ip == null
+                || !InetAddresses.isInetAddress(ip)
+                || config.getPort() < 1
+                || config.getPort() > 65535
+                || !("http".equals(config.getScheme()) || "https".equals(config.getScheme()))) {
+            return null;
+        }
+        JobLogProperties.Agent agent = new JobLogProperties.Agent();
+        agent.setUrl(config.getScheme() + "://" + (ip.contains(":") ? "[" + ip + "]" : ip) + ":" + config.getPort());
+        agent.setToken(config.getToken());
+        return agent;
+    }
+
     private HttpURLConnection connect(JobLogPod row, String path) throws IOException {
-        JobLogProperties.Agent agent = properties.getAgents().get(row.getNodeName());
+        JobLogProperties.Agent agent = resolveAgent(row);
         if (agent == null || agent.getToken() == null || agent.getToken().isEmpty()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE);
         }

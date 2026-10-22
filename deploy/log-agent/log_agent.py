@@ -41,6 +41,12 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "DinkyLogAgent/1"
 
     def do_GET(self):
+        if self.path == "/healthz":
+            ready = os.path.isdir(self.server.root) and os.access(self.server.root, os.R_OK | os.X_OK)
+            self.send_response(200 if ready else 503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         supplied = self.headers.get("Authorization", "").encode("utf-8")
         expected = ("Bearer " + self.server.token).encode("utf-8")
         if not hmac.compare_digest(supplied, expected):

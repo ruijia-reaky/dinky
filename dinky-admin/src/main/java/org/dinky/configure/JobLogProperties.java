@@ -38,6 +38,15 @@ public class JobLogProperties {
     private int connectTimeoutMs = 2000;
     private int readTimeoutMs = 5000;
     private Map<String, Agent> agents = new HashMap<>();
+    private NodeAgent nodeAgent = new NodeAgent();
+
+    @Data
+    public static class NodeAgent {
+        private boolean enabled;
+        private String scheme = "http";
+        private int port = 18090;
+        private String token;
+    }
 
     @Data
     public static class Agent {
