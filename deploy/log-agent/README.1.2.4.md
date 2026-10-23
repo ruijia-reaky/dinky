@@ -20,4 +20,8 @@ Follow `README.md` for log mounts, Agent configuration and permissions. Historic
 
 Before production use, verify both Application modes, job termination and restarts, multiple TaskManagers, rotated logs, download authorization, UID separators and the company's existing submission modes. Successful compilation and unit tests do not replace deployment validation.
 
+## Backport validation
+
+The Java 11 / Flink 1.18.1 Admin reactor build passed with 21 selected tests (log service, Operator status, SQL resource ownership, status transitions and shared archive configuration). The frontend production build and formatting checks for the historical log components passed. The old Spotless plugin could not resolve the Git worktree, so its check and Maven Enforcer were skipped; this is not a claim that all CI checks passed. No 1.2.4 deployment or database migration against a company environment has been validated yet.
+
 When returning to the newer development version, take a fresh backup and follow that version's full upgrade procedure. Matching feature migrations do not eliminate unrelated schema changes between Dinky releases.
