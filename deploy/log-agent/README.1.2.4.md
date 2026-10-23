@@ -22,6 +22,20 @@ Before production use, verify both Application modes, job termination and restar
 
 ## Backport validation
 
-The Java 11 / Flink 1.18.1 Admin reactor build passed with 21 selected tests (log service, Operator status, SQL resource ownership, status transitions and shared archive configuration). The frontend production build and formatting checks for the historical log components passed. The old Spotless plugin could not resolve the Git worktree, so its check and Maven Enforcer were skipped; this is not a claim that all CI checks passed. No 1.2.4 deployment or database migration against a company environment has been validated yet.
+The Java 11 / Flink 1.18.1 Admin reactor build passed with 21 selected tests (log service, Operator status, SQL resource ownership, status transitions and shared archive configuration). The frontend production build and formatting checks for the historical log components passed. The old Spotless plugin could not resolve the Git worktree, so its check and Maven Enforcer were skipped; this is not a claim that all CI checks passed.
+
+An isolated 1.2.4 container deployment with a fresh MySQL database was also verified: all seven migrations succeeded, a new Kubernetes Application JAR job reached RUNNING and completed checkpoints, and both JM/TM log downloads returned HTTP 200. The browser displayed the running job and its historical log rows. The deployed Admin JAR hash matched the local 1.2.4 build. This does not validate a company database upgrade, Operator deployment on this backport, or all failure/recovery cases.
+
+## Runtime dependencies for a clean production distribution
+
+The production package uses provided dependencies and needs runtime preparation. Supply the dependencies from this branch and its declared versions; do not fill gaps with Dinky development JARs:
+
+- Place `mysql:mysql-connector-java:8.0.28` in the Dinky runtime classpath when using MySQL.
+- Copy the built `dinky-client-hadoop-1.2.4.jar` and `dinky-client-base-1.2.4.jar` from their module `target` directories into `release/extends/`. Gateway SPI initialization loads YARN classes even when submitting a Kubernetes job.
+- Supply the full `org.apache.flink:flink-table-planner_2.12:1.18.1` and its matching Scala runtime for Dinky's parser. The planner loader alone does not expose `ExtendedParser` to the application classloader. Resolve duplicate logging/HTTP dependencies explicitly; see the container README.
+- Use `build/extends/dinky-app-1.18-1.2.4-jar-with-dependencies.jar` for the Flink-side Dinky launcher. The thin module JAR is insufficient. In 1.2.4 this launcher initializes JDBC access to the task database, so its Flink containers also require the JDBC driver and compatible planner/runtime libraries. Install them in the Flink image or explicit read-only mounts on every eligible node.
+- If running alongside another Dinky, use separate container networking and a distinct web port. Dinky 1.2.4's print listener binds a fixed UDP port 7125; changing only the HTTP port while sharing host networking causes a collision. Configure kubeconfig with a Kubernetes API address reachable from inside the container rather than host loopback.
+
+The validation cluster's very recent Kubernetes API returned additional `/version` fields that Flink 1.18.1's shaded client could not parse during the configuration availability probe. The actual Application submission and log download succeeded; do not treat that as proof that every Flink 1.18.1/Kubernetes version combination is supported. Check the company's Kubernetes version separately.
 
 When returning to the newer development version, take a fresh backup and follow that version's full upgrade procedure. Matching feature migrations do not eliminate unrelated schema changes between Dinky releases.
