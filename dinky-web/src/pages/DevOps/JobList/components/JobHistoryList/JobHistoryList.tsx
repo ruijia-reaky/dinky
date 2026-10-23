@@ -20,6 +20,7 @@
 import StatusTag from '@/components/JobTags/StatusTag';
 import { getJobDuration } from '@/pages/DevOps/function';
 import { queryList } from '@/services/api';
+import { RUN_MODE } from '@/services/constants';
 import { API_CONSTANTS } from '@/services/endpoints';
 import { Jobs } from '@/types/DevOps/data.d';
 import { l } from '@/utils/intl';
@@ -80,9 +81,14 @@ const JobHistoryList = (props: HistoryProps) => {
         <Link href={`#/devops/job-detail?id=${record.id}`} key={'history-detail'}>
           {l('devops.joblist.detail')}
         </Link>,
-        <Link onClick={() => setLogInstanceId(record.id)} key='history-logs'>
-          {l('devops.historyLogs.title')}
-        </Link>
+        ...(record.type === RUN_MODE.KUBERNETES_APPLICATION ||
+        record.type === RUN_MODE.KUBERNETES_APPLICATION_OPERATOR
+          ? [
+              <Link onClick={() => setLogInstanceId(record.id)} key='history-logs'>
+                {l('devops.historyLogs.title')}
+              </Link>
+            ]
+          : [])
       ]
     }
   ];
