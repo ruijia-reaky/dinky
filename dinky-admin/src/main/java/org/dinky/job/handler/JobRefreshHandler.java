@@ -188,7 +188,13 @@ public class JobRefreshHandler {
 
         boolean isTransition = false;
 
-        if (JobStatus.isTransition(jobInstance.getStatus())) {
+        boolean transitionStatus = GatewayType.get(jobInfoDetail.getClusterInstance().getType())
+                        .isKubernetesApplicationMode()
+                ? JobStatus.isTransition(
+                        jobInstance.getStatus(),
+                        Asserts.isNull(jobDataDto.getJob()) ? null : jobDataDto.getJob().getEndTime())
+                : JobStatus.isTransition(jobInstance.getStatus());
+        if (transitionStatus) {
             Long finishTime = TimeUtil.localDateTimeToLong(jobInstance.getFinishTime());
             long duration = Duration.between(jobInstance.getFinishTime(), LocalDateTime.now())
                     .toMinutes();

@@ -26,6 +26,13 @@ import org.junit.jupiter.api.Test;
 
 class JobStatusTest {
     @Test
+    void legacySingleArgumentApiRetainsItsBehavior() {
+        assertTrue(JobStatus.isTransition("FAILED"));
+        assertTrue(JobStatus.isTransition("RECONNECTING"));
+        assertFalse(JobStatus.isTransition("FINISHED"));
+    }
+
+    @Test
     void terminalEvidenceWithoutRestEndTimeDoesNotThrowOrReconnect() {
         assertFalse(JobStatus.isTransition("FAILED", null));
         assertFalse(JobStatus.isTransition("FAILED", 123L));
