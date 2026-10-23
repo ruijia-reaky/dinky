@@ -19,6 +19,8 @@
 
 import { ThemeCloud, ThemeStar } from '@/components/ThemeSvg/ThemeSvg';
 import { LANGUAGE_KEY, LANGUAGE_ZH, SERVER_VERSION, STORY_LANGUAGE } from '@/services/constants';
+import { queryDataByParams } from '@/services/BusinessCrud';
+import { API_CONSTANTS } from '@/services/endpoints';
 import { THEME } from '@/types/Public/data';
 import { useLocalStorage } from '@/utils/hook/useLocalStorage';
 import { l } from '@/utils/intl';
@@ -29,7 +31,7 @@ import React, { useEffect, useState } from 'react';
 import useCookie from 'react-use-cookie';
 import screenfull from 'screenfull';
 import Avatar from './AvatarDropdown';
-import { getValueFromLocalStorage } from '@/utils/function';
+import { getValueFromLocalStorage, setKeyToLocalStorage } from '@/utils/function';
 
 const GlobalHeaderRight: React.FC = () => {
   /**
@@ -37,9 +39,33 @@ const GlobalHeaderRight: React.FC = () => {
    */
   const [fullScreen, setFullScreen] = useState(true);
   const { initialState, setInitialState } = useModel('@@initialState');
+  const [serverVersion, setServerVersion] = useState(() =>
+    getValueFromLocalStorage(SERVER_VERSION)
+  );
   const [theme, setTheme] = useLocalStorage(THEME.NAV_THEME, initialState?.settings?.navTheme);
   const [language, setLanguage] = useLocalStorage(LANGUAGE_KEY, LANGUAGE_ZH);
   const [langCache, setLangCache] = useCookie(STORY_LANGUAGE, language);
+
+  useEffect(() => {
+    if (!initialState?.currentUser) {
+      return;
+    }
+    let active = true;
+    queryDataByParams<string>(API_CONSTANTS.GET_SERVICE_VERSION, { isExternalCall: false }).then(
+      (version) => {
+        if (active && version) {
+          if (version !== getValueFromLocalStorage(SERVER_VERSION)) {
+            window.localStorage.removeItem('persist:root');
+          }
+          setKeyToLocalStorage(SERVER_VERSION, version);
+          setServerVersion(version);
+        }
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [initialState?.currentUser]);
 
   useEffect(() => {
     setLangCache(language);
@@ -115,7 +141,7 @@ const GlobalHeaderRight: React.FC = () => {
     style: fullScreenClassName
   };
 
-  const menuVersion = l('menu.version', '', { version: getValueFromLocalStorage(SERVER_VERSION) });
+  const menuVersion = l('menu.version', '', { version: serverVersion });
   return (
     <>
       <Tooltip
