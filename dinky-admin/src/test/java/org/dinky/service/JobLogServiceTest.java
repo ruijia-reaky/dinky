@@ -55,6 +55,10 @@ class JobLogServiceTest {
 
     @BeforeEach
     void setup() throws Exception {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""),
+                JobLogPod.class);
         TenantContextHolder.set(1);
         properties = new JobLogProperties();
         pods = mock(JobLogPodMapper.class);
@@ -266,7 +270,9 @@ class JobLogServiceTest {
         properties.getNodeAgent().setEnabled(true);
         for (String ip : new String[] {null, "", "node.example.org", "127.0.0.1/other", "127.0.0.1:18090"}) {
             row.setHostIp(ip);
-            assertEquals("PATH_ONLY", service.list(7).get(0).getAccessStatus());
+            assertEquals(
+                    ip == null ? "ADDRESS_MISSING" : "PATH_ONLY",
+                    service.list(7).get(0).getAccessStatus());
         }
     }
 
@@ -303,5 +309,76 @@ class JobLogServiceTest {
                 HttpStatus.GONE,
                 assertThrows(ResponseStatusException.class, () -> service.download(11, "old.log"))
                         .getStatus());
+    }
+
+    @Test
+    void fillsHostIpAfterSchedulingAndDoesNotEraseItOnPartialStatus() throws Exception {
+        io.fabric8.kubernetes.api.model.Pod pod = new io.fabric8.kubernetes.api.model.PodBuilder()
+                .withNewMetadata()
+                .withUid("uid")
+                .withName("tm")
+                .addToLabels("component", "taskmanager")
+                .endMetadata()
+                .withNewSpec()
+                .withNodeName("worker-a")
+                .endSpec()
+                .withNewStatus()
+                .withPhase("Pending")
+                .endStatus()
+                .build();
+        java.lang.reflect.Method method = JobLogService.class.getDeclaredMethod(
+                "recordPod", JobInstance.class, String.class, String.class, io.fabric8.kubernetes.api.model.Pod.class);
+        method.setAccessible(true);
+        JobInstance instance = new JobInstance();
+        instance.setId(7);
+        instance.setTenantId(1);
+        method.invoke(service, instance, "app", "default", pod);
+        assertEquals(null, row.getHostIp());
+        pod.getStatus().setHostIP("10.0.0.2");
+        method.invoke(service, instance, "app", "default", pod);
+        assertEquals("10.0.0.2", row.getHostIp());
+        pod.setStatus(null);
+        method.invoke(service, instance, "app", "default", pod);
+        assertEquals("10.0.0.2", row.getHostIp());
+    }
+
+    @Test
+    void pendingDoesNotImplyMissingLogsAfterAnEarlierRun() {
+        server.createContext("/logs", exchange -> {
+            exchange.sendResponseHeaders(404, -1);
+            exchange.close();
+        });
+        server.start();
+        row.setFilesJson("[]");
+        row.setLifecycleJson("{\"phase\":\"Pending\",\"containers\":[]}");
+        assertEquals("NOT_STARTED", service.list(7).get(0).getAccessStatus());
+        row.setLifecycleJson("{\"phase\":\"Pending\",\"runHistory\":{\"start\":{\"status\":\"TERMINATED\"}}}");
+        assertEquals("MISSING", service.list(7).get(0).getAccessStatus());
+    }
+
+    @Test
+    void repairsOldAddressFromKubernetesNodeInternalIp() {
+        io.fabric8.kubernetes.client.KubernetesClient client =
+                mock(io.fabric8.kubernetes.client.KubernetesClient.class);
+        io.fabric8.kubernetes.client.dsl.NonNamespaceOperation<
+                        io.fabric8.kubernetes.api.model.Node,
+                        io.fabric8.kubernetes.api.model.NodeList,
+                        io.fabric8.kubernetes.client.dsl.Resource<io.fabric8.kubernetes.api.model.Node>>
+                nodes = mock(io.fabric8.kubernetes.client.dsl.NonNamespaceOperation.class);
+        io.fabric8.kubernetes.client.dsl.Resource<io.fabric8.kubernetes.api.model.Node> resource =
+                mock(io.fabric8.kubernetes.client.dsl.Resource.class);
+        when(client.nodes()).thenReturn(nodes);
+        when(nodes.withName("worker-a")).thenReturn(resource);
+        when(resource.get())
+                .thenReturn(new io.fabric8.kubernetes.api.model.NodeBuilder()
+                        .withNewStatus()
+                        .addNewAddress()
+                        .withType("InternalIP")
+                        .withAddress("10.0.0.3")
+                        .endAddress()
+                        .endStatus()
+                        .build());
+        service.repairNodeAddresses(7, client);
+        assertEquals("10.0.0.3", row.getHostIp());
     }
 }

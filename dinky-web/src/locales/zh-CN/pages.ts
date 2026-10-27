@@ -32,6 +32,8 @@ export default {
   'devops.historyLogs.status': '访问状态',
   'devops.historyLogs.download': '下载',
   'devops.historyLogs.status.AVAILABLE': '可下载',
+  'devops.historyLogs.status.ADDRESS_MISSING': '节点地址缺失',
+  'devops.historyLogs.status.NOT_STARTED': '未观察到启动',
   'devops.historyLogs.status.PATH_ONLY': '仅记录路径',
   'devops.historyLogs.status.MISSING': '目录不存在',
   'devops.historyLogs.status.UNAVAILABLE': '文件服务不可达',

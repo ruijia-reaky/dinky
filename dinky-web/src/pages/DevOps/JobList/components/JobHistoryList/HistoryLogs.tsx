@@ -44,6 +44,23 @@ type LogPod = {
   lastSeen?: string;
 };
 
+type ExecutionObservation = {
+  savedJobId?: string;
+  savedStatus?: string;
+  applicationId?: string;
+  status: string;
+  checkedAt: string;
+  jobs: { jid: string; name: string; state: string; startedAt: number }[];
+};
+const observationLabels: Record<string, string> = {
+  MATCHED: '当前 Application 中仍存在原 Job ID',
+  JOB_ID_CHANGED: '检测到新执行：当前 Job ID 与原执行不同',
+  MULTIPLE_JOBS: '原 Job ID 已不在当前列表中，Application 包含多个作业，需人工核对',
+  NO_JOBS: '当前 Application 未返回作业，原执行终态不能据此确认',
+  APPLICATION_UNVERIFIED: '无法确认当前 Application 与原执行属于同一部署，未关联新作业',
+  UNAVAILABLE: '当前执行状态暂不可查询，保留原执行状态',
+  UNSUPPORTED: '该模式未启用当前执行查询'
+};
 type Lifecycle = {
   present?: boolean;
   deleting?: boolean;
@@ -52,6 +69,13 @@ type Lifecycle = {
     string,
     { status: string; exitCode?: number; reason?: string; finishedAt?: string }
   >;
+  initContainers?: {
+    name: string;
+    state?: {
+      waiting?: { reason?: string; message?: string };
+      terminated?: { exitCode?: number; reason?: string; message?: string };
+    };
+  }[];
   containers?: {
     name: string;
     restartCount?: number;
@@ -117,6 +141,7 @@ const fileState = (_pod: LogPod, file?: LogFile) => {
 const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () => void }) => {
   const [detail, setDetail] = useState<{ pod: LogPod; file?: LogFile }>();
   const [pods, setPods] = useState<LogPod[]>([]);
+  const [execution, setExecution] = useState<ExecutionObservation>();
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -130,6 +155,14 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
       if (!silent) setLoading(true);
       setFailed(false);
       try {
+        try {
+          const observed = await getData(`${API_CONSTANTS.JOB_LOG_FILES}/execution`, {
+            jobInstanceId: instanceId
+          });
+          setExecution(observed.data);
+        } catch {
+          setExecution(undefined);
+        }
         const response = await getData(API_CONSTANTS.JOB_LOG_FILES, { jobInstanceId: instanceId });
         setPods(response.data ?? []);
         setRefreshedAt(Date.now());
@@ -190,6 +223,39 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
           type='info'
           showIcon
           message='按 Pod UID + UTC 启动时间 + 随机 ID 区分运行批次，轮转文件归属原批次。Pod 内编号按仍保留的批次排序；旧日志不推测重启顺序。退出状态来自已采集的 Kubernetes 证据。'
+        />
+        <Alert
+          type={
+            execution?.status === 'JOB_ID_CHANGED' || execution?.status === 'MULTIPLE_JOBS'
+              ? 'warning'
+              : 'info'
+          }
+          showIcon
+          message={
+            execution
+              ? (observationLabels[execution.status] ?? execution.status)
+              : '当前执行状态查询失败'
+          }
+          description={
+            execution && (
+              <Space direction='vertical' style={{ width: '100%', overflowWrap: 'anywhere' }}>
+                <Typography.Text copyable>
+                  原执行 Job ID：{execution.savedJobId ?? '-'}（{execution.savedStatus ?? '-'}）
+                </Typography.Text>
+                {execution.jobs.map((job) => (
+                  <Typography.Text copyable key={job.jid}>
+                    当前 Application 作业：{job.jid} · {job.state} · {job.name} · 启动于{' '}
+                    {new Date(job.startedAt).toLocaleString()}
+                  </Typography.Text>
+                ))}
+                <Typography.Text type='secondary'>
+                  原执行记录及日志归属保持不变。新 ID 不代表已从原 checkpoint
+                  恢复；多作业列表不自动推断对应关系。采集于{' '}
+                  {new Date(execution.checkedAt).toLocaleString()}
+                </Typography.Text>
+              </Space>
+            )
+          }
         />
         {failed && <Alert type='error' showIcon message={l('devops.historyLogs.failed')} />}
         <Table
@@ -343,6 +409,17 @@ const HistoryLogs = ({ instanceId, onClose }: { instanceId: number; onClose: () 
                     children: text(file ? `${pod.hostLogDir}/${file.name}` : undefined)
                   },
                   { key: 'podState', label: 'Pod 当前状态', children: podState(pod) },
+                  {
+                    key: 'initialization',
+                    label: '初始化状态',
+                    children:
+                      lifecycle(pod)
+                        .initContainers?.map((init) => {
+                          const state = init.state?.waiting ?? init.state?.terminated;
+                          return `${init.name}: ${state?.reason ?? '无失败证据'} ${state?.message ?? ''}`;
+                        })
+                        .join('；') || '无已采集证据'
+                  },
                   {
                     key: 'restarts',
                     label: '容器重启次数',

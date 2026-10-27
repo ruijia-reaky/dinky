@@ -1,0 +1,16 @@
+server:
+  port: ${DINKY_PORT:8888}
+dinky:
+  job-logs:
+    enabled: true
+    root-path: ${LOG_ROOT:/data/flink-logs}
+    directory-template: '{app}/{uid}_{pod}'
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+    node-agent:
+      enabled: true
+      scheme: http
+      port: ${AGENT_PORT:18090}
+      token: ${LOG_AGENT_TOKEN}
+sa-token:
+  token-name: ${DINKY_TOKEN_NAME:dinky-token}

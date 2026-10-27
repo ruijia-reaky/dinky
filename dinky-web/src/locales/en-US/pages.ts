@@ -33,6 +33,8 @@ export default {
   'devops.historyLogs.status': 'Access status',
   'devops.historyLogs.download': 'Download',
   'devops.historyLogs.status.AVAILABLE': 'Available',
+  'devops.historyLogs.status.ADDRESS_MISSING': 'Node address missing',
+  'devops.historyLogs.status.NOT_STARTED': 'Start not observed',
   'devops.historyLogs.status.PATH_ONLY': 'Path only',
   'devops.historyLogs.status.MISSING': 'Directory missing',
   'devops.historyLogs.status.UNAVAILABLE': 'Service unavailable',

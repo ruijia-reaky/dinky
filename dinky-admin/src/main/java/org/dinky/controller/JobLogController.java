@@ -21,6 +21,8 @@ package org.dinky.controller;
 
 import org.dinky.data.model.job.JobLogPod;
 import org.dinky.data.result.Result;
+import org.dinky.service.JobInstanceService;
+import org.dinky.service.JobLogExecutionService;
 import org.dinky.service.JobLogService;
 
 import java.io.IOException;
@@ -50,6 +52,14 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/jobInstance/logFiles")
 public class JobLogController {
     private final JobLogService service;
+    private final JobInstanceService instances;
+    private final JobLogExecutionService executions;
+
+    @GetMapping("/execution")
+    public Result<JobLogExecutionService.Observation> execution(@RequestParam Integer jobInstanceId) {
+        return Result.succeed(
+                executions.observe(instances.getJobInfoDetailInfo(service.authorizedInstance(jobInstanceId))));
+    }
 
     @GetMapping
     public Result<List<JobLogPod>> list(@RequestParam Integer jobInstanceId) {
