@@ -57,6 +57,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.net.InetAddresses;
 
@@ -214,8 +215,6 @@ public class JobLogService {
             row.setRole("jobmanager".equals(component) ? "JM" : "TM");
             row.setPodUid(pod.getMetadata().getUid());
             row.setPodName(pod.getMetadata().getName());
-            row.setNodeName(pod.getSpec().getNodeName());
-            row.setHostIp(pod.getStatus() == null ? null : pod.getStatus().getHostIP());
             String directory = properties
                     .getDirectoryTemplate()
                     .replace("{app}", application)
@@ -226,6 +225,13 @@ public class JobLogService {
             row.setHostLogDir(properties.getRootPath() + "/" + directory);
             row.setFilesJson("[]");
             row.setFirstSeen(LocalDateTime.now());
+        }
+        // Scheduling can precede hostIP assignment. Never erase known routing information.
+        row.setNodeName(pod.getSpec().getNodeName());
+        if (pod.getStatus() != null
+                && pod.getStatus().getHostIP() != null
+                && !pod.getStatus().getHostIP().isEmpty()) {
+            row.setHostIp(pod.getStatus().getHostIP());
         }
         Map<String, Object> evidence = new HashMap<>();
         Map<String, Object> runHistory = new HashMap<>();
@@ -242,6 +248,7 @@ public class JobLogService {
             evidence.put("phase", pod.getStatus().getPhase());
             evidence.put("reason", pod.getStatus().getReason());
             evidence.put("containers", pod.getStatus().getContainerStatuses());
+            evidence.put("initContainers", pod.getStatus().getInitContainerStatuses());
             if (pod.getStatus().getContainerStatuses() != null) {
                 for (io.fabric8.kubernetes.api.model.ContainerStatus container :
                         pod.getStatus().getContainerStatuses()) {
@@ -278,7 +285,7 @@ public class JobLogService {
         if (started != null) history.put(started, run);
     }
 
-    private JobInstance authorizedInstance(Integer id) {
+    public JobInstance authorizedInstance(Integer id) {
         Object tenant = TenantContextHolder.get();
         if (tenant == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
@@ -303,7 +310,10 @@ public class JobLogService {
                             ? Collections.emptyList()
                             : JSON.parseArray(row.getFilesJson(), JobLogPod.LogFile.class));
             if (resolveAgent(row) == null) {
-                row.setAccessStatus("PATH_ONLY");
+                row.setAccessStatus(
+                        properties.getNodeAgent().isEnabled() && row.getHostIp() == null
+                                ? "ADDRESS_MISSING"
+                                : "PATH_ONLY");
                 continue;
             }
             HttpURLConnection connection = null;
@@ -327,7 +337,7 @@ public class JobLogService {
                     }
                 }
                 if (status == 404) {
-                    row.setAccessStatus("MISSING");
+                    row.setAccessStatus(notObservedStarted(row) ? "NOT_STARTED" : "MISSING");
                 } else if (status != 200) {
                     row.setAccessStatus("UNAVAILABLE");
                 } else {
@@ -349,6 +359,65 @@ public class JobLogService {
             }
         }
         return rows;
+    }
+
+    static boolean notObservedStarted(JobLogPod row) {
+        if (row.getLifecycleJson() == null) return false;
+        if (row.getFilesJson() != null && !JSON.parseArray(row.getFilesJson()).isEmpty()) return false;
+        com.alibaba.fastjson2.JSONObject evidence = JSON.parseObject(row.getLifecycleJson());
+        com.alibaba.fastjson2.JSONObject history = evidence.getJSONObject("runHistory");
+        if (history != null && !history.isEmpty()) return false;
+        if (!"Pending".equals(evidence.getString("phase"))) return false;
+        com.alibaba.fastjson2.JSONArray containers = evidence.getJSONArray("containers");
+        if (containers != null) {
+            for (int i = 0; i < containers.size(); i++) {
+                com.alibaba.fastjson2.JSONObject container = containers.getJSONObject(i);
+                for (String key : new String[] {"state", "lastState"}) {
+                    com.alibaba.fastjson2.JSONObject state = container.getJSONObject(key);
+                    if (state != null && (state.containsKey("running") || state.containsKey("terminated"))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Resolve old scheduled Pods only through the execution's Kubernetes cluster, never by DNS guessing. */
+    public void repairNodeAddresses(Integer instanceId, KubernetesClient client) {
+        JobInstance instance = authorizedInstance(instanceId);
+        Map<String, String> addresses = new HashMap<>();
+        for (JobLogPod row : mapper.selectList(new LambdaQueryWrapper<JobLogPod>()
+                .eq(JobLogPod::getTenantId, instance.getTenantId())
+                .eq(JobLogPod::getJobInstanceId, instanceId))) {
+            if (row.getHostIp() != null || row.getNodeName() == null) continue;
+            if (!addresses.containsKey(row.getNodeName())) {
+                io.fabric8.kubernetes.api.model.Node node =
+                        client.nodes().withName(row.getNodeName()).get();
+                String address = null;
+                if (node != null && node.getStatus() != null && node.getStatus().getAddresses() != null) {
+                    for (io.fabric8.kubernetes.api.model.NodeAddress candidate :
+                            node.getStatus().getAddresses()) {
+                        if ("InternalIP".equals(candidate.getType())
+                                && InetAddresses.isInetAddress(candidate.getAddress())) {
+                            address = candidate.getAddress();
+                            break;
+                        }
+                    }
+                }
+                addresses.put(row.getNodeName(), address);
+            }
+            if (addresses.get(row.getNodeName()) != null) {
+                row.setHostIp(addresses.get(row.getNodeName()));
+                mapper.update(
+                        null,
+                        new LambdaUpdateWrapper<JobLogPod>()
+                                .eq(JobLogPod::getId, row.getId())
+                                .eq(JobLogPod::getTenantId, instance.getTenantId())
+                                .isNull(JobLogPod::getHostIp)
+                                .set(JobLogPod::getHostIp, row.getHostIp()));
+            }
+        }
     }
 
     public HttpURLConnection download(Integer id, String fileName) throws IOException {

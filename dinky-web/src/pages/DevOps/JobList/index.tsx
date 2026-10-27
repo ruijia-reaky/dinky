@@ -194,7 +194,6 @@ const JobList = (props: connect) => {
   }, [statusFilter]);
 
   useEffect(() => {
-    setInterval(() => tableRef.current?.reload(false), 5 * 1000);
     queryUserData({ id: getTenantByLocalStorage() });
     queryTaskOwnerLockingStrategy();
   }, []);

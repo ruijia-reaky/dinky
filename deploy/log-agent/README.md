@@ -123,3 +123,24 @@ Update the Agent image and Dinky backend/frontend together, then use the new Fli
 The history drawer shows each run's UTC-derived local display time, immutable ID, Pod-local ordering, run state and file type. Multiple files with the same run ID belong to one JVM run. A Pod-local ordinal reflects the runs still retained in that Pod directory; deleting earlier files can change the ordinal, so use the immutable run ID for references. Replaced Pods remain separate by UID, and parallel TaskManagers are not mistaken for sequential restarts.
 
 Exit status is shown only when Kubernetes evidence was captured. Missing events remain unknown. Old filenames cannot be retrospectively assigned a restart sequence. Rollover retention still applies within each run; whole-run retention and disk-capacity policies must be configured separately. The Agent does not delete logs.
+
+
+## 重启后的执行与日志状态
+
+历史日志窗口查询 `/api/jobInstance/logFiles/execution?jobInstanceId=...`，独立展示原执行的 Job ID、原状态及当前 Application 的作业列表。只有当前 JM Pod UID 与该执行已采集的 JM UID 相符时才展示关联结果；同名 Application 重新提交但缺少身份依据时返回 `APPLICATION_UNVERIFIED`。因此这是保守的同部署观察，不是任意新 Pod 的自动认领。多作业 Application 展示全部作业，不选择第一项覆盖原记录。旧执行 Job ID、终态和日志索引不会被新 Job ID 替换。
+
+无 HA 的 Native Application 在 JM 重启后可能重新执行入口并产生新 Job ID。`JOB_ID_CHANGED` 只表示观察到不同 ID，不证明 checkpoint 恢复。当前观察在打开日志窗口时按刷新设置查询，不自动创建新的 Dinky 提交记录，也不改变原执行的 UNKNOWN 状态。接口不可达时只展示查询不可用，不据此判断失败或结束。
+
+Pod 已调度但尚未分配 hostIP 时，后续采集会补齐非空地址。打开窗口查询当前执行时，可通过该次提交的 kubeconfig 对缺失 IP 的旧记录按节点名补查 InternalIP；此能力需要额外的集群级 `nodes get` 权限，以及该命名空间的 `services get`、`pods list` 权限。Node 权限不足不影响已有地址的下载，地址仍缺失时显示“节点地址缺失”。仅补缺失地址，不覆盖历史非空地址；节点 IP 改变时使用显式 Agent 映射。节点同名重建不能恢复原节点磁盘数据。
+
+文件服务确认目录不存在且最后生命周期为 Pending、没有已采集运行/退出证据和已知文件时，显示“未观察到启动”；其他 404 显示“目录不存在”。这不等于证明从未启动，短暂运行可能被采样漏掉。初始化容器的状态与原因保存在 lifecycle_json 并展示在详情中。没有 Agent 映射时仍可查看路径，推算路径不保证实际存在。
+
+生产 Native Application 应按所用 Flink 版本配置 Kubernetes HA，并让 JM/TM 访问同一个持久化恢复存储。例如 Flink 1.18 可使用 `high-availability.type: kubernetes`、`high-availability.storageDir: <持久化 URI>`、`state.checkpoints.dir: <持久化 URI>`，同时为 Flink ServiceAccount 授予 HA ConfigMap 所需权限。目录中的占位符必须替换为已验证的实际存储；仅配置固定 Job ID 或只有 checkpoint 文件都不能代替 HA。配置修改需在独立作业验证 JM/节点故障后 Job ID 与恢复 checkpoint，再安排现有作业迁移，不能将无 HA 重跑当作恢复成功。
+
+HA 配置依据：[Apache Flink 1.18 Kubernetes HA Services](https://nightlies.apache.org/flink/flink-docs-release-1.18/docs/deployment/ha/kubernetes_ha/)。
+
+主列表保留独立的 Flink Job ID 和状态列，按已保存执行记录显示；当前 Application 与旧执行的对照仍在历史日志窗口。主列表移除原每 5 秒整表重载定时器，使用工具栏手动刷新；历史日志窗口自身的刷新开关保持不变。
+
+## 离线打包与 Kubernetes 部署
+
+完整模板、公用 `.env.example`、每节点导入脚本及中文使用手册见 [deploy/offline](../offline/README.md)，从源码构建和打包见 [BUILD.md](../offline/BUILD.md)。真实 `.env` 与镜像归档不提交仓库。
